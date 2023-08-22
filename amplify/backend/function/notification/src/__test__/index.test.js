@@ -1,7 +1,6 @@
 const AWS = require("aws-sdk");
 const { handler } = require("../index");
 
-
 jest.mock("aws-sdk", () => {
   return {
     SQS: jest.fn(() => ({
@@ -10,7 +9,7 @@ jest.mock("aws-sdk", () => {
           Messages: [
             {
               Body: JSON.stringify({
-                phoneNumber: "+2349074084079",
+                phoneNumber: "+2349074084999",
                 message: "Notification Message",
               }),
               ReceiptHandle: "testReceiptHandle",
@@ -50,7 +49,7 @@ describe("Notification Function", () => {
       Messages: [
         {
           Body: JSON.stringify({
-            phoneNumber: "+2349074084079",
+            phoneNumber: "+2349074084999",
             message: "Notification Message",
           }),
           ReceiptHandle: "testReceiptHandle",
@@ -120,6 +119,7 @@ describe("Notification Function", () => {
       expect(error.message).toBe("No messages found in SQS queue.");
     }
   });
+  
 
   it("should handle errors", async () => {
     const mockError = new Error("Mocked error");

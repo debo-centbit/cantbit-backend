@@ -1,21 +1,29 @@
 const AWS = require("aws-sdk");
 
-const { AWS_QUEUE_URL, AWS_TOPIC_ARN, REGION, PHONE_NUMBER, ACCOUNT_ID } = process.env;
-const sqs = new AWS.SQS({ region: REGION });
+const {
+  AWS_QUEUE_URL,
+  AWS_TOPIC_ARN,
+  REGION,
+  PHONE_NUMBER,
+} = process.env;
 
-exports.handler = async (event, context) => {
+const createAWSInstanceWithRegion = (Service, region) => {
+  return new Service({ region });
+};
+
+const sqs = createAWSInstanceWithRegion(AWS.SQS, REGION);
+const sns = createAWSInstanceWithRegion(AWS.SNS, REGION);
+
+exports.handler = async () => {
+
   try {
 
-    const phoneNumberSubscriptions = PHONE_NUMBER;
-
-    for (const phoneNumber of phoneNumberSubscriptions) {
-      const subscriptionAttributes = {
-        Protocol: "sms",
-        TopicArn: AWS_TOPIC_ARN,
-        Endpoint: phoneNumber,
+    if (!PHONE_NUMBER) {
+      console.log("No phone number provided.");
+      return {
+        statusCode: 200,
+        body: "No phone number provided.",
       };
-
-      await sns.subscribe(subscriptionAttributes).promise();
     }
 
     const receiveParams = {
@@ -23,7 +31,7 @@ exports.handler = async (event, context) => {
       MaxNumberOfMessages: 1,
       WaitTimeSeconds: 30,
     };
-
+    
     const { Messages } = await sqs.receiveMessage(receiveParams).promise();
 
     if (!Messages || Messages.length === 0) {
@@ -36,32 +44,39 @@ exports.handler = async (event, context) => {
 
     const message = Messages[0];
     const messageBody = JSON.parse(message.Body);
-    const { phoneNumber, message: messageText } = messageBody;
+    const { messageContent } = messageBody; 
 
-    const smsTemplate = `Message for ${phoneNumber} from SQS: ${messageText}`;
+    const smsTemplate = `Message: ${messageContent}`;
 
-    const snsParams = {
+    const smsParams = {
       Message: smsTemplate,
-      TopicArn: AWS_TOPIC_ARN,
+      PhoneNumber: PHONE_NUMBER,
     };
 
-    await sns.publish(snsParams).promise();
+    await sns.publish(smsParams).promise();
+    if (AWS_TOPIC_ARN) {
+      const snsTopicParams = {
+        Message: smsTemplate,
+        TopicArn: AWS_TOPIC_ARN,
+      };
+
+      await sns.publish(snsTopicParams).promise();
+    }
 
     const deleteParams = {
       QueueUrl: AWS_QUEUE_URL,
       ReceiptHandle: message.ReceiptHandle,
     };
-
     await sqs.deleteMessage(deleteParams).promise();
 
-    console.log("Message processed and sent via SNS.");
+    console.log("Message processed and sent via SMS and optionally published to an SNS topic.");
 
     return {
       statusCode: 200,
-      body: "Message processed and sent via SNS.",
+      body: "Message processed and sent via SMS and optionally published to an SNS topic.",
     };
   } catch (error) {
-    console.log("Error:", error);
+    console.error("Error:", error);
 
     return {
       statusCode: 500,
