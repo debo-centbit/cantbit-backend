@@ -1,5 +1,4 @@
 const AWS = require("aws-sdk");
-const { sns } = require("./config/snsConfig");
 
 const { AWS_QUEUE_URL, AWS_TOPIC_ARN, REGION, PHONE_NUMBER, ACCOUNT_ID } = process.env;
 const sqs = new AWS.SQS({ region: REGION });

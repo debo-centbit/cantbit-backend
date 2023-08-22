@@ -50,8 +50,8 @@ describe("Notification Function", () => {
       Messages: [
         {
           Body: JSON.stringify({
-            phoneNumber: "+1234567890",
-            message: "Test Message",
+            phoneNumber: "+2349074084079",
+            message: "Notification Message",
           }),
           ReceiptHandle: "testReceiptHandle",
         },
