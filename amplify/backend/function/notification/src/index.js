@@ -1,4 +1,6 @@
 const AWS = require("aws-sdk");
+const dotenv = require("dotenv");
+dotenv.config()
 
 const {
   AWS_QUEUE_URL,
@@ -6,6 +8,8 @@ const {
   REGION,
   PHONE_NUMBER,
 } = process.env;
+
+
 
 const createAWSInstanceWithRegion = (Service, region) => {
   return new Service({ region });
@@ -17,7 +21,7 @@ const sns = createAWSInstanceWithRegion(AWS.SNS, REGION);
 exports.handler = async () => {
 
   try {
-
+  
     if (!PHONE_NUMBER) {
       console.log("No phone number provided.");
       return {
@@ -54,14 +58,14 @@ exports.handler = async () => {
     };
 
     await sns.publish(smsParams).promise();
-    if (AWS_TOPIC_ARN) {
-      const snsTopicParams = {
-        Message: smsTemplate,
-        TopicArn: AWS_TOPIC_ARN,
-      };
+    // if (AWS_TOPIC_ARN) {
+    //   const snsTopicParams = {
+    //     Message: smsTemplate,
+    //     TopicArn: AWS_TOPIC_ARN,
+    //   };
 
-      await sns.publish(snsTopicParams).promise();
-    }
+    //   await sns.publish(snsTopicParams).promise();
+    // }
 
     const deleteParams = {
       QueueUrl: AWS_QUEUE_URL,
@@ -69,7 +73,7 @@ exports.handler = async () => {
     };
     await sqs.deleteMessage(deleteParams).promise();
 
-    console.log("Message processed and sent via SMS and optionally published to an SNS topic.");
+   // console.log("Message processed and sent via SMS and optionally published to an SNS topic.");
 
     return {
       statusCode: 200,
@@ -84,3 +88,4 @@ exports.handler = async () => {
     };
   }
 };
+
