@@ -1,66 +1,52 @@
 const AWS = require("aws-sdk");
+const { messageTemplate, emailTemplate } = require("./utils/utils");
 
 const {
   AWS_QUEUE_URL,
   AWS_TOPIC_ARN,
   REGION,
   PHONE_NUMBER,
+  SENDER_EMAIL_ADDRESS,
+  RECIPIENT_EMAIL
 } = process.env;
 
-const createAWSInstanceWithRegion = (Service, region) => {
-  return new Service({ region });
-};
+const sqs = new AWS.SQS({ region: REGION });
+const sns = new AWS.SNS({ region: REGION });
 
-const sqs = createAWSInstanceWithRegion(AWS.SQS, REGION);
-const sns = createAWSInstanceWithRegion(AWS.SNS, REGION);
+const phoneNumberPattern = /^\+\d{1,4}\s?\d+$/;
+const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-exports.handler = async () => {
-
+exports.handler = async (notificationType) => {
   try {
+    if (emailPattern.test(notificationType)) {
+      template = await messageTemplate();
 
-    if (!PHONE_NUMBER) {
-      console.log("No phone number provided.");
-      return {
-        statusCode: 200,
-        body: "No phone number provided.",
-      };
-    }
+      const emailParams = await emailTemplate(SENDER_EMAIL_ADDRESS, RECIPIENT_EMAIL);
 
-    const receiveParams = {
-      QueueUrl: AWS_QUEUE_URL,
-      MaxNumberOfMessages: 1,
-      WaitTimeSeconds: 30,
-    };
-    
-    const { Messages } = await sqs.receiveMessage(receiveParams).promise();
+      await AWS.SES.sendEmail(emailParams).promise();
 
-    if (!Messages || Messages.length === 0) {
-      console.log("No messages found in SQS queue.");
-      return {
-        statusCode: 200,
-        body: "No messages found in SQS queue.",
-      };
-    }
+      console.log(
+        "Message processed and sent via Email."
+      );
+    } 
+    else if (phoneNumberPattern.test(notificationType)) {
+      template = await messageTemplate();
 
-    const message = Messages[0];
-    const messageBody = JSON.parse(message.Body);
-    const { messageContent } = messageBody; 
-
-    const smsTemplate = `Message: ${messageContent}`;
-
-    const smsParams = {
-      Message: smsTemplate,
-      PhoneNumber: PHONE_NUMBER,
-    };
-
-    await sns.publish(smsParams).promise();
-    if (AWS_TOPIC_ARN) {
-      const snsTopicParams = {
-        Message: smsTemplate,
-        TopicArn: AWS_TOPIC_ARN,
+      const smsParams = {
+        Message: template,
+        PhoneNumber: PHONE_NUMBER,
       };
 
-      await sns.publish(snsTopicParams).promise();
+      await sns.publish(smsParams).promise();
+
+      if (AWS_TOPIC_ARN) {
+        const snsTopicParams = {
+          Message: smsTemplate,
+          TopicArn: AWS_TOPIC_ARN,
+        };
+
+        await sns.publish(snsTopicParams).promise();
+      }
     }
 
     const deleteParams = {
@@ -69,11 +55,13 @@ exports.handler = async () => {
     };
     await sqs.deleteMessage(deleteParams).promise();
 
-    console.log("Message processed and sent via SMS and optionally published to an SNS topic.");
+    console.log(
+      "Message processed and sent via SMS and optionally published to an SNS topic."
+    );
 
     return {
       statusCode: 200,
-      body: "Message processed and sent via SMS and optionally published to an SNS topic.",
+      body: "Message processed and sent.",
     };
   } catch (error) {
     console.error("Error:", error);
