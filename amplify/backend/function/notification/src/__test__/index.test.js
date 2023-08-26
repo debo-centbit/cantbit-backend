@@ -1,102 +1,204 @@
 const AWS = require("aws-sdk");
 const { handler } = require("../index");
-const { messageTemplate, emailTemplate } = require("../utils/utils");
+const dotenv = require("dotenv");
+dotenv.config();
 
-// Mock environment variables
-process.env.AWS_QUEUE_URL = "your-queue-url";
-process.env.AWS_TOPIC_ARN = "your-topic-arn";
-process.env.REGION = "us-east-1";
-process.env.PHONE_NUMBER = "+2349074084999";
-process.env.SENDER_EMAIL_ADDRESS = "sender@example.com";
-process.env.RECIPIENT_EMAIL = "recipient@example.com";
+jest.mock("aws-sdk");
 
-jest.mock("../utils/utils", () => ({
-  messageTemplate: jest.fn(),
-  emailTemplate: jest.fn(),
-}));
-
-// Mock AWS services and their methods
-jest.mock("aws-sdk", () => {
-  const mSQS = {
-    receiveMessage: jest.fn().mockReturnThis(),
-    deleteMessage: jest.fn().mockReturnThis(),
-  };
-  const mSNS = {
-    publish: jest.fn().mockReturnThis(),
-  };
-  const mSES = {
-    sendEmail: jest.fn().mockImplementation((params, callback) => {
-      callback(null, { /* your response here */ });
-    }),
-  };
-  return {
-    SQS: jest.fn(() => mSQS),
-    SNS: jest.fn(() => mSNS),
-    SES: jest.fn(() => mSES),
-  };
-});
-
-// Rest of your test code...
-
-describe("lambda handler", () => {
+describe("Lambda Function", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("should send email when notificationType is an email", async () => {
-    // Define the emailParams you expect emailTemplate to return
-    const expectedEmailParams = {
-      Source: process.env.SENDER_EMAIL_ADDRESS,
-      Destination: {
-        ToAddresses: [process.env.RECIPIENT_EMAIL],
+  const mockMessage = {
+    Messages: [
+      {
+        Body: JSON.stringify({
+          phoneNumber: "+2349074084999",
+          messageContent: "Notification Message",
+        }),
+        ReceiptHandle: "testReceiptHandle",
       },
-      Message: {
-        Subject: {
-          Data: "Hello, there", // Replace with your expected subject
-        },
-        Body: {
-          Text: {
-            Data: "This is the subject",
-          },
+    ],
+  };
+
+  const mockEmail = {
+    Source: process.env.SENDER_EMAIL,
+    Destination: {
+      ToAddresses: ["olawale@gmail.com"],
+    },
+    Message: {
+      Subject: {
+        Data: `email subject`,
+      },
+      Body: {
+        Text: {
+          Data: "Message: Notification Message",
         },
       },
-    };
+    },
+  };
+  it("should process SQS message and publish to SNS", async () => {
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
 
-    // Mock the emailTemplate function to return the expectedEmailParams
-    emailTemplate.mockResolvedValue(expectedEmailParams);
+    AWS.SNS.prototype.publish = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
 
-    // Call your handler function
-    const result = await handler("test@example.com");
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
 
-    // Assert that messageTemplate and emailTemplate were called
-    expect(messageTemplate).toHaveBeenCalled();
-    expect(emailTemplate).toHaveBeenCalledWith(
-      process.env.SENDER_EMAIL_ADDRESS,
-      "test@example.com"
-    );
+    await handler({ notificationType: "+234805939022" });
 
-     // Assert that AWS.SES.sendEmail was called with the expected emailParams
-     expect(AWS.SES().sendEmail).toHaveBeenCalledWith(expectedEmailParams);
+    expect(AWS.SQS.prototype.receiveMessage).toHaveBeenCalledWith({
+      QueueUrl: process.env.AWS_QUEUE_URL,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: 30,
+    });
 
-     // Assert the result
-     expect(result.statusCode).toBe(200);
-   });
+    expect(AWS.SNS.prototype.publish).toHaveBeenCalledWith({
+      Message: `Message: Notification Message`,
+      PhoneNumber: "+234805939022",
+    });
 
-   it("should delete message from SQS queue", async () => {
-    const result = await handler("test@example.com");
-
-    expect(AWS.SQS().deleteMessage).toHaveBeenCalled();
-    expect(result.statusCode).toBe(200);
+    expect(AWS.SQS.prototype.deleteMessage).toHaveBeenCalledWith({
+      QueueUrl: process.env.AWS_QUEUE_URL,
+      ReceiptHandle: "testReceiptHandle",
+    });
   });
 
-  it("should handle errors and return a 500 status code", async () => {
-    const mockError = new Error("Test error");
-    messageTemplate.mockRejectedValue(mockError);
-  
-    const result = await handler("paul7jakintayo@gmail.com"); // Provide a valid email address
-  
-    expect(console.error).toHaveBeenCalledWith("Error:", mockError);
-    expect(result.statusCode).toBe(500);
-    expect(result.body).toBe(JSON.stringify({ error: mockError.message }));
+  it("should process SQS message and publish to SES", async () => {
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
+
+    AWS.SES.prototype.sendEmail = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+
+    await handler({
+      notificationType: "olawale@gmail.com",
+      emailSubject: "email subject",
+    });
+
+    expect(AWS.SQS.prototype.receiveMessage).toHaveBeenCalledWith({
+      QueueUrl: process.env.AWS_QUEUE_URL,
+      MaxNumberOfMessages: 1,
+      WaitTimeSeconds: 30,
+    });
+
+    expect(AWS.SES.prototype.sendEmail).toHaveBeenCalledWith(mockEmail);
+
+    expect(AWS.SQS.prototype.deleteMessage).toHaveBeenCalledWith({
+      QueueUrl: process.env.AWS_QUEUE_URL,
+      ReceiptHandle: "testReceiptHandle",
+    });
+  });
+
+  it("should handle no messages in SQS queue and message not sent through SNS", async () => {
+    const mockMessage = {
+      Messages: [],
+    };
+
+    AWS.SNS.prototype.publish = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
+
+    const result = await handler({ notificationType: "+234958594003" });
+
+    expect(AWS.SNS.prototype.publish).not.toHaveBeenCalled();
+    expect(AWS.SQS.prototype.deleteMessage).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(404);
+    expect(result.body).toBe("No messages found in SQS queue.");
+  });
+
+  it("should handle no messages in SQS queue and message not sent through SES", async () => {
+    const mockMessage = {
+      Messages: [],
+    };
+
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
+    AWS.SES.prototype.sendEmail = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+
+    const result = await handler({ notificationType: "+234958594003" });
+
+    expect(AWS.SES.prototype.sendEmail).not.toHaveBeenCalled();
+    expect(AWS.SQS.prototype.deleteMessage).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(404);
+    expect(result.body).toBe("No messages found in SQS queue.");
+  });
+
+  it("should handle errors", async () => {
+    const mockError = new Error("Mocked error");
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockRejectedValueOnce(mockError),
+    });
+    try {
+      await handler("");
+    } catch (error) {
+      expect(error.statusCode).toBe(500);
+      if (error.message) {
+        expect(error.message).toBe("Mocked error");
+      }
+    }
+  });
+
+  it("should handle invalid email", async () => {
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
+    AWS.SES.prototype.sendEmail = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    const result = await handler({ notificationType: "rteteetegmail.com" });
+
+    expect(AWS.SQS.prototype.receiveMessage).not.toHaveBeenCalled();
+    expect(AWS.SES.prototype.sendEmail).not.toHaveBeenCalled();
+    expect(AWS.SQS.prototype.deleteMessage).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toBe("Invalid email or phone number.");
+  });
+
+  it("should handle invalid phonenumber", async () => {
+    AWS.SQS.prototype.receiveMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce(mockMessage),
+    });
+    AWS.SES.prototype.sendEmail = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    AWS.SQS.prototype.deleteMessage = jest.fn().mockReturnValueOnce({
+      promise: jest.fn().mockResolvedValueOnce({}),
+    });
+    const result = await handler({ notificationType: "09085675575" });
+
+    expect(AWS.SQS.prototype.receiveMessage).not.toHaveBeenCalled();
+    expect(AWS.SES.prototype.sendEmail).not.toHaveBeenCalled();
+    expect(AWS.SQS.prototype.deleteMessage).not.toHaveBeenCalled();
+    expect(result.statusCode).toBe(400);
+    expect(result.body).toBe("Invalid email or phone number.");
   });
 });

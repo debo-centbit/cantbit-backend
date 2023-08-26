@@ -1,71 +1,35 @@
-const AWS = require("aws-sdk");
 const { messageTemplate, emailTemplate } = require("./utils/utils");
+const dotenv = require("dotenv");
+dotenv.config();
+const { SENDER_EMAIL } = process.env;
 
-const {
-  AWS_QUEUE_URL,
-  AWS_TOPIC_ARN,
-  REGION,
-  PHONE_NUMBER,
-  SENDER_EMAIL_ADDRESS,
-  RECIPIENT_EMAIL
-} = process.env;
-
-const sqs = new AWS.SQS({ region: REGION });
-const sns = new AWS.SNS({ region: REGION });
+const senderEmail = SENDER_EMAIL;
 
 const phoneNumberPattern = /^\+\d{1,4}\s?\d+$/;
 const emailPattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
-exports.handler = async (notificationType) => {
+exports.handler = async (input) => {
+  const { notificationType, emailSubject } = input;
   try {
     if (emailPattern.test(notificationType)) {
-      template = await messageTemplate();
-
-      const emailParams = await emailTemplate(SENDER_EMAIL_ADDRESS, RECIPIENT_EMAIL);
-
-      await AWS.SES.sendEmail(emailParams).promise();
-
-      console.log(
-        "Message processed and sent via Email."
+      const result = await emailTemplate(
+        senderEmail,
+        notificationType,
+        emailSubject
       );
-    } 
-    else if (phoneNumberPattern.test(notificationType)) {
-      template = await messageTemplate();
 
-      const smsParams = {
-        Message: template,
-        PhoneNumber: PHONE_NUMBER,
-      };
+      return result;
+    } else if (phoneNumberPattern.test(notificationType)) {
+      const result = await messageTemplate(notificationType);
 
-      await sns.publish(smsParams).promise();
-
-      if (AWS_TOPIC_ARN) {
-        const snsTopicParams = {
-          Message: smsTemplate,
-          TopicArn: AWS_TOPIC_ARN,
-        };
-
-        await sns.publish(snsTopicParams).promise();
-      }
+      return result;
     }
 
-    const deleteParams = {
-      QueueUrl: AWS_QUEUE_URL,
-      ReceiptHandle: message.ReceiptHandle,
-    };
-    await sqs.deleteMessage(deleteParams).promise();
-
-    console.log(
-      "Message processed and sent via SMS and optionally published to an SNS topic."
-    );
-
     return {
-      statusCode: 200,
-      body: "Message processed and sent.",
+      statusCode: 400,
+      body: "Invalid email or phone number.",
     };
   } catch (error) {
-    console.error("Error:", error);
-
     return {
       statusCode: 500,
       body: JSON.stringify({ error: error.message }),
