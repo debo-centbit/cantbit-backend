@@ -1,12 +1,8 @@
 const AWS = require("aws-sdk");
 const dotenv = require("dotenv");
-dotenv.config()
+dotenv.config();
 
-const {
-  AWS_QUEUE_URL,
-  REGION,
-  PHONE_NUMBER,
-} = process.env;
+const { AWS_QUEUE_URL, REGION, PHONE_NUMBER } = process.env;
 
 const createAWSInstanceWithRegion = (Service, region) => {
   return new Service({ region });
@@ -16,9 +12,7 @@ const sqs = createAWSInstanceWithRegion(AWS.SQS, REGION);
 const sns = createAWSInstanceWithRegion(AWS.SNS, REGION);
 
 exports.handler = async (phoneNumber) => {
-
   try {
-
     if (!phoneNumber) {
       return {
         statusCode: 404,
@@ -31,7 +25,7 @@ exports.handler = async (phoneNumber) => {
       MaxNumberOfMessages: 1,
       WaitTimeSeconds: 30,
     };
-    
+
     const { Messages } = await sqs.receiveMessage(receiveParams).promise();
 
     if (!Messages || Messages.length === 0) {
@@ -43,7 +37,7 @@ exports.handler = async (phoneNumber) => {
 
     const message = Messages[0];
     const messageBody = JSON.parse(message.Body);
-    const { messageContent } = messageBody; 
+    const { messageContent } = messageBody;
 
     const smsTemplate = `Message: ${messageContent}`;
 
@@ -70,4 +64,3 @@ exports.handler = async (phoneNumber) => {
     };
   }
 };
-
