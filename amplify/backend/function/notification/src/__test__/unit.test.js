@@ -1,6 +1,6 @@
 const AWS = require("aws-sdk");
-const { handler } = require("./index");
-const { handlers } = require("./sendEmail");
+const { handler } = require("../index");
+const { handlers } = require("../sendEmail");
 
 jest.mock("aws-sdk");
 
