@@ -1,9 +1,9 @@
 const AWS = require("aws-sdk");
-const { handler } = require("./index");
+const { handler } = require("../index");
 
 jest.mock("aws-sdk");
 
-describe("Lambda Function", () => {
+describe("Lambda Function for sending SMS Notification", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
