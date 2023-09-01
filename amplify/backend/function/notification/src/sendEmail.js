@@ -1,12 +1,10 @@
 const AWS = require("aws-sdk");
 
 const sqsQueueUrl = process.env.AWS_QUEUE_URL;
-const snsTopicArn = process.env.AWS_TOPIC_ARN;
-
 const sqs = new AWS.SQS({ region: process.env.REGION });
-const sns = new AWS.SNS({ region: process.env.REGION });
+const ses = new AWS.SES({ region: process.env.REGION });
 
-exports.handler = async (event, context) => {
+exports.handlers = async (event, context) => {
   try {
     // Poll message from SQS
     const receiveParams = {
@@ -24,17 +22,36 @@ exports.handler = async (event, context) => {
     const message = sqsResponse.Messages[0];
     const messageBody = JSON.parse(message.Body);
 
-    const PhoneNumber = messageBody.phoneNumber;
+    const recipientEmail = messageBody.recipientEmail;
+    const emailContent = messageBody.emailContent;
 
-    // Generate SMS template
-    const smsTemplate = `Message for ${PhoneNumber} from SQS: ${messageBody.message}`;
+    // Generate email template
+    const emailTemplate = `
+      <h1>Hello!</h1>
+      <p>${emailContent}</p>
+    `;
 
-    // Publish message to SNS
-    const snsParams = {
-      Message: smsTemplate,
-      TopicArn: snsTopicArn,
+    // Send email
+    const emailParams = {
+      Destination: {
+        ToAddresses: [recipientEmail],
+      },
+      Message: {
+        Body: {
+          Html: {
+            Charset: "UTF-8",
+            Data: emailTemplate,
+          },
+        },
+        Subject: {
+          Charset: "UTF-8",
+          Data: "Notification from SQS",
+        },
+      },
+      Source: process.env.AWS_SES_SENDER,
     };
-    await sns.publish(snsParams).promise();
+
+    await ses.sendEmail(emailParams).promise();
 
     // Delete processed message from SQS
     const deleteParams = {
@@ -43,7 +60,7 @@ exports.handler = async (event, context) => {
     };
     await sqs.deleteMessage(deleteParams).promise();
 
-    console.log("Message processed and sent via SNS.");
+    console.log("Message processed and email sent via Amazon SES.");
   } catch (error) {
     console.log("Error:", error);
     throw error;
