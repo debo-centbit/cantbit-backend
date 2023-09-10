@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  SMSServicePackageS3Bucket:
+    Type: String
+    Default: sms-service-package-bucket
+    Description: SMS delivery service package bucket
+  SMSServicePackage:
+    Type: String
+    Default: SMSServicePackage.zip
+  EmailServicePackageS3Bucket:
+    Type: String
+    Default: email-service-package-bucket
+    Description: Email delivery service package bucket
+  EmailServiceArtifact:
+    Type: String
+    Default: EmailServiceArtifact.zip
+    Description: Email service artifact to be deployed
+
+Resources:
+  # SMS delivery service resources
+  SMSDeliveryLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - logs:*
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: LambdaAllowSQS
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - sqs:ReceiveMessage
+                - sqs:DeleteMessage
+                - sqs:GetQueueAttributes
+                Resource: !GetAtt SMSDeliveryQueue.Arn
+                
+  SMSDeliveryLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler  # I'm not sure if this is the setup you have for your handler, please adjust it as needed
+      Role: !GetAtt SMSDeliveryLambdaRole.Arn
+      FunctionName: SMSDeliveryLambdaFunction
+      Code:
+        S3Bucket: !Ref SMSServicePackageS3Bucket
+        S3Key: !Ref SMSServicePackage
+      Runtime: nodejs14.x
+      MemorySize: 128
+      Timeout: 30
+
+  SMSDeliveryQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      VisibilityTimeout: 30
+
+  SMSDeliveryLambdaSQSTrigger:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn: !GetAtt SMSDeliveryQueue.Arn
+      FunctionName: !GetAtt SMSDeliveryLambdaFunction.Arn
+      Enabled: True
+
+  # Common to both sets of resources
+  SNSTopic:
+    Type: "AWS::SNS::Topic"
+
+  # Email delivery service resources
+  EmailDeliveryQueue:
+    Type: "AWS::SQS::Queue"
+    Properties:
+      VisibilityTimeout: 30
+      
+  EmailDeliveryLambdaRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: LambdaBasicExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                - logs:*
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: LambdaAllowSQS
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt EmailDeliveryQueue.Arn
+
+  EmailDeliveryLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: index.handler  # I'm not sure if this is the setup you have for your handler, please adjust it as needed
+      Role: !GetAtt EmailDeliveryLambdaRole.Arn
+      FunctionName: EmailDeliveryLambdaFunction
+      Code:
+        S3Bucket: !Ref EmailServicePackageS3Bucket
+        S3Key: !Ref EmailServiceArtifact
+      Runtime: nodejs14.x
+      MemorySize: 128
+      Timeout: 30
+
+  EmailDeliveryLambdaSQSTrigger:
+    Type: 'AWS::Lambda::EventSourceMapping'
+    Properties:
+      EventSourceArn: !GetAtt EmailDeliveryQueue.Arn
+      FunctionName: !GetAtt EmailDeliveryLambdaFunction.Arn
+      Enabled: True
