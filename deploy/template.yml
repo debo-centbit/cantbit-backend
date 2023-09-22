@@ -15,6 +15,7 @@ Parameters:
     Type: String
     Default: EmailServiceArtifact.zip
     Description: Email service artifact to be deployed
+  # Just adding this
 
 Resources:
   # SMS delivery service resources
