@@ -1,4 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation Template for SMS and Email Delivery Lambda Functions
+
 Parameters:
   SMSServicePackageS3Bucket:
     Type: String
@@ -15,6 +17,10 @@ Parameters:
     Type: String
     Default: EmailServiceArtifact.zip
     Description: Email service artifact to be deployed
+  AWSSesSender:
+    Type: String
+    Default: akindeleoluwasegun01@gmail.com
+    Description: AWS SES Sender Email Address
 
 Resources:
   # SMS delivery service resources
@@ -47,11 +53,19 @@ Resources:
                 - sqs:DeleteMessage
                 - sqs:GetQueueAttributes
                 Resource: !GetAtt SMSDeliveryQueue.Arn
+        - PolicyName: SNSAllow
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !GetAtt SNSTopic.Arn
                 
   SMSDeliveryLambdaFunction:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Handler: index.handler  # I'm not sure if this is the setup you have for your handler, please adjust it as needed
+      Handler: index.handler
       Role: !GetAtt SMSDeliveryLambdaRole.Arn
       FunctionName: SMSDeliveryLambdaFunction
       Code:
@@ -60,6 +74,9 @@ Resources:
       Runtime: nodejs14.x
       MemorySize: 128
       Timeout: 30
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SNSTopic
 
   SMSDeliveryQueue:
     Type: "AWS::SQS::Queue"
@@ -75,7 +92,9 @@ Resources:
 
   # Common to both sets of resources
   SNSTopic:
-    Type: "AWS::SNS::Topic"
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: SNSTopic
 
   # Email delivery service resources
   EmailDeliveryQueue:
@@ -112,11 +131,19 @@ Resources:
                   - sqs:DeleteMessage
                   - sqs:GetQueueAttributes
                 Resource: !GetAtt EmailDeliveryQueue.Arn
+        - PolicyName: SESAllow
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ses:SendEmail
+                Resource: arn:aws:ses:*
 
   EmailDeliveryLambdaFunction:
     Type: 'AWS::Lambda::Function'
     Properties:
-      Handler: index.handler  # I'm not sure if this is the setup you have for your handler, please adjust it as needed
+      Handler: sendEmail.handlers
       Role: !GetAtt EmailDeliveryLambdaRole.Arn
       FunctionName: EmailDeliveryLambdaFunction
       Code:
@@ -125,6 +152,9 @@ Resources:
       Runtime: nodejs14.x
       MemorySize: 128
       Timeout: 30
+      Environment:
+        Variables:
+          AWS_SES_SENDER: !Ref AWSSesSender
 
   EmailDeliveryLambdaSQSTrigger:
     Type: 'AWS::Lambda::EventSourceMapping'
